@@ -80,7 +80,7 @@ RUN mkdir -p /etc/sudoers.d/ && \
 # Install Docker using the convenient script
 
 # Docker installation
-#RUN curl -sSL https://get.docker.com/ | sh
+RUN curl -sSL https://get.docker.com/ | sh
 
 # Docker permissions
 ADD wrapdocker /usr/local/bin/wrapdocker
@@ -103,5 +103,15 @@ VOLUME /home/jenkins
 
 # Expose SSH port
 EXPOSE 22
+
+USER jenkins
+RUN ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519
+
+# Reset user to root
+USER root
+
+EXPOSE 22
+
+CMD ["/usr/sbin/sshd","-D"]
 
 ENTRYPOINT ["/jenkins-slave-startup.sh"]
