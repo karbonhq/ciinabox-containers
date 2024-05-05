@@ -34,9 +34,6 @@ RUN apt-get update && apt-get install -y \
     awscli \
     openssh-server
 
-# Switch to Jenkins user
-USER jenkins
-
 # Configure SSH daemon with a dedicated user (more secure)
 RUN mkdir -p /etc/sudoers.d \
 && echo "jenskins ALL=(ALL) NOPASSWD: /usr/local/bin/jenkins-agent" > /etc/sudoers.d/jenkins \
@@ -47,8 +44,6 @@ RUN mkdir -p /etc/sudoers.d \
 && ssh-keygen -t ed25519 -f /etc/ssh/ssh_host_ed25519_key -N '' \
 && sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin no/' /etc/ssh/sshd_config \
 && sed -i 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' /etc/pam.d/sshd
-
-USER ROOT
 
 # Configure locale
 RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && \
