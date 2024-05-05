@@ -60,7 +60,7 @@ RUN curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.d
     apt-get install -y git-lfs && \
     git lfs install
 
-# Install additional tools
+# Install ChefDK
 RUN curl -L https://packages.chef.io/files/stable/chefdk/4.13.3/debian/10/chefdk_4.13.3-1_amd64.deb > /tmp/chefdk.deb && \
     dpkg -i /tmp/chefdk.deb && \
     rm /tmp/chefdk.deb
@@ -73,13 +73,27 @@ RUN curl -L https://releases.hashicorp.com/packer/1.7.8/packer_1.7.8_linux_amd64
 RUN if [ ! -f /usr/bin/node ]; then ln -s /usr/bin/nodejs /usr/bin/node; fi && \
     npm install -g azure-cli
 
+# Ensure the /etc/sudoers.d/ directory exists and configure sudoers for Jenkins user
+RUN mkdir -p /etc/sudoers.d/ && \
+    echo "jenkins ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/jenkins
+
+# Install Docker using the convenient script
+
 # Docker installation
 RUN curl -sSL https://get.docker.com/ | sh
 
 # Docker permissions
 ADD wrapdocker /usr/local/bin/wrapdocker
-RUN chmod +x /usr/local/bin/wrapdocker && \
-    usermod -a -G docker jenkins
+# Add wrapdocker to the image
+ADD wrapdocker /usr/local/bin/wrapdocker
+RUN chmod +x /usr/local/bin/wrapdocker
+
+# Add user Jenkins to the docker group
+RUN usermod -a -G docker jenkins
+
+# Add the Jenkins slave startup script and set it as the entrypoint
+ADD jenkins-slave-startup.sh /jenkins-slave-startup.sh
+RUN chmod +x /jenkins-slave-startup.sh
 
 # Switch to Jenkins user
 USER jenkins
@@ -90,5 +104,4 @@ VOLUME /home/jenkins
 # Expose SSH port
 EXPOSE 22
 
-# Start SSH daemon
-CMD ["/usr/sbin/sshd", "-D"]
+ENTRYPOINT ["/jenkins-slave-startup.sh"]
