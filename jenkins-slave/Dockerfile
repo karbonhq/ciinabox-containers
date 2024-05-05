@@ -1,5 +1,5 @@
 # Use an official Jenkins agent image as a parent image
-FROM jenkins/agent
+FROM jenkins/agent:latest
 
 # Set the maintainer label
 LABEL maintainer="Ameya Agashe <ameya.agashe@karbonhq.com>"
@@ -32,12 +32,18 @@ RUN apt-get update && apt-get install -y \
     locales \
     unzip \
     awscli \
-    openssh-server  # Adding OpenSSH server
+    openssh-server
 
-# Configure SSH daemon
-RUN mkdir /var/run/sshd \
-    && sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin no/' /etc/ssh/sshd_config \
-    && sed -i 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' /etc/pam.d/sshd
+# Configure SSH daemon with a dedicated user (more secure)
+RUN mkdir -p /etc/sudoers.d \
+&& echo "jenskins ALL=(ALL) NOPASSWD: /usr/local/bin/jenkins-agent" > /etc/sudoers.d/jenkins \
+&& rm -f /etc/ssh/ssh_host_*_key /etc/ssh/ssh_host_*_key.pub \
+&& ssh-keygen -t rsa -f /etc/ssh/ssh_host_rsa_key -N '' \
+&& ssh-keygen -t dsa -f /etc/ssh/ssh_host_dsa_key -N '' \
+&& ssh-keygen -t ecdsa -f /etc/ssh/ssh_host_ecdsa_key -N '' \
+&& ssh-keygen -t ed25519 -f /etc/ssh/ssh_host_ed25519_key -N '' \
+&& sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin no/' /etc/ssh/sshd_config \
+&& sed -i 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' /etc/pam.d/sshd
 
 # Configure locale
 RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && \
@@ -54,45 +60,35 @@ RUN curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.d
     apt-get install -y git-lfs && \
     git lfs install
 
-# Install ChefDK
+# Install additional tools
 RUN curl -L https://packages.chef.io/files/stable/chefdk/4.13.3/debian/10/chefdk_4.13.3-1_amd64.deb > /tmp/chefdk.deb && \
     dpkg -i /tmp/chefdk.deb && \
     rm /tmp/chefdk.deb
 
-# Install Packer
 RUN curl -L https://releases.hashicorp.com/packer/1.7.8/packer_1.7.8_linux_amd64.zip > /tmp/packer.zip && \
     unzip /tmp/packer.zip -d /usr/local/bin && \
     rm /tmp/packer.zip
 
-# Create a symlink for nodejs to be accessible as 'node' if it does not exist
+# Node.js and Azure CLI
 RUN if [ ! -f /usr/bin/node ]; then ln -s /usr/bin/nodejs /usr/bin/node; fi && \
     npm install -g azure-cli
 
-# Ensure the /etc/sudoers.d/ directory exists and configure sudoers for Jenkins user
-RUN mkdir -p /etc/sudoers.d/ && \
-    echo "jenkins ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/jenkins
-
-# Install Docker using the convenient script
+# Docker installation
 RUN curl -sSL https://get.docker.com/ | sh
 
-# Add wrapdocker to the image
+# Docker permissions
 ADD wrapdocker /usr/local/bin/wrapdocker
-RUN chmod +x /usr/local/bin/wrapdocker
+RUN chmod +x /usr/local/bin/wrapdocker && \
+    usermod -a -G docker jenkins
 
-# Add user Jenkins to the docker group
-RUN usermod -a -G docker jenkins
-
-# Add the Jenkins slave startup script and set it as the entrypoint
-ADD jenkins-slave-startup.sh /jenkins-slave-startup.sh
-RUN chmod +x /jenkins-slave-startup.sh
-
-# Switch back to the jenkins user
+# Switch to Jenkins user
 USER jenkins
 
-# Define a volume for Jenkins home directory
+# Set volume for Jenkins home
 VOLUME /home/jenkins
 
-# Expose the standard SSH port
+# Expose SSH port
 EXPOSE 22
 
-ENTRYPOINT ["/jenkins-slave-startup.sh"]
+# Start SSH daemon
+CMD ["/usr/sbin/sshd", "-D"]
